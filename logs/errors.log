@@ -1,0 +1,73 @@
+2025-10-18 22:30:49 | ERROR | root | bot.py:77 | ❌ Ошибка при инициализации БД: 'NoneType' object has no attribute 'begin'
+Traceback (most recent call last):
+  File "/home/boogie/telegram-bot/bot.py", line 67, in on_startup
+    async with async_engine.begin() as conn:
+               ^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'begin'
+2025-10-18 22:36:40 | ERROR | root | bot.py:75 | ❌ Ошибка при инициализации БД: 'NoneType' object has no attribute 'begin'
+Traceback (most recent call last):
+  File "/home/boogie/telegram-bot/bot.py", line 65, in on_startup
+    async with async_engine.begin() as conn:
+               ^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'begin'
+2025-10-19 11:23:58 | ERROR | ai_service | ai_service.py:195 | ❌ Ошибка при вызове OpenAI API: 
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+Traceback (most recent call last):
+  File "/home/boogie/telegram-bot/ai_service.py", line 147, in analyze_note
+    response = await openai.ChatCompletion.acreate(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/boogie/telegram-bot/venv/lib/python3.12/site-packages/openai/lib/_old_api.py", line 39, in __call__
+    raise APIRemovedInV1(symbol=self._symbol)
+openai.lib._old_api.APIRemovedInV1: 
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+
+2025-10-19 12:08:56 | ERROR | root | bot.py:238 | ❌ Ошибка при сохранении заметки: '<' not supported between instances of 'str' and 'NoneType'
+Traceback (most recent call last):
+  File "/home/boogie/telegram-bot/bot.py", line 209, in handle_note
+    ai_result = await analyze_note(text, user_categories)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/boogie/telegram-bot/ai_service.py", line 93, in analyze_note
+    available_categories = await get_available_categories(user_categories)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/boogie/telegram-bot/ai_service.py", line 61, in get_available_categories
+    return sorted(list(all_categories))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: '<' not supported between instances of 'str' and 'NoneType'
+2025-10-19 12:09:20 | ERROR | root | bot.py:238 | ❌ Ошибка при сохранении заметки: '<' not supported between instances of 'str' and 'NoneType'
+Traceback (most recent call last):
+  File "/home/boogie/telegram-bot/bot.py", line 209, in handle_note
+    ai_result = await analyze_note(text, user_categories)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/boogie/telegram-bot/ai_service.py", line 93, in analyze_note
+    available_categories = await get_available_categories(user_categories)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/boogie/telegram-bot/ai_service.py", line 61, in get_available_categories
+    return sorted(list(all_categories))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: '<' not supported between instances of 'str' and 'NoneType'
+2025-10-19 12:09:50 | ERROR | root | bot.py:238 | ❌ Ошибка при сохранении заметки: '<' not supported between instances of 'str' and 'NoneType'
+Traceback (most recent call last):
+  File "/home/boogie/telegram-bot/bot.py", line 209, in handle_note
+    ai_result = await analyze_note(text, user_categories)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/boogie/telegram-bot/ai_service.py", line 93, in analyze_note
+    available_categories = await get_available_categories(user_categories)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/boogie/telegram-bot/ai_service.py", line 61, in get_available_categories
+    return sorted(list(all_categories))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: '<' not supported between instances of 'str' and 'NoneType'
