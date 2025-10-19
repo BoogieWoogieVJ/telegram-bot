@@ -1,21 +1,9 @@
-# --- Telegram / Bot ---
-aiogram==2.25.1          # у тебя используется Dispatcher, executor из 2.x
-aiohttp>=3.9.0
-
-# --- ORM / Database ---
-SQLAlchemy>=2.0.29
-aiosqlite>=0.19.0        # для sqlite+aiosqlite
-greenlet>=3.0.0          # нужен SQLAlchemy async
-
-# --- OpenAI / AI сервис ---
-openai>=1.40.0           # новый AsyncOpenAI SDK
-
-# --- Environment / Config ---
-python-dotenv>=1.0.1
-dataclasses-json>=0.6.4  # если захочешь сериализацию датаклассов (опционально)
-
-# --- Logging / Utilities ---
-loguru>=0.7.2             # если в logging_conf используется loguru (иначе не обязателен)
-
-# --- System ---
-asyncio
+aiogram==2.25.1
+aiohttp==3.8.6
+SQLAlchemy==2.0.29
+aiosqlite==0.19.0
+greenlet==3.0.3
+python-dotenv==1.0.1
+dataclasses-json==0.6.4
+loguru==0.7.2
+openai==1.40.0
