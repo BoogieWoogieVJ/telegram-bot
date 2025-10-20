@@ -30,5 +30,5 @@ loguru==0.7.2
 # ==========================================
 # Dependencies (pinned for Python 3.13)
 # ==========================================
-pydantic>=2.6.0
+pydantic
 pydantic-core>=2.18.0
