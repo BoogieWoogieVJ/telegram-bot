@@ -50,9 +50,6 @@ MAIN_KB.add(KeyboardButton("❓ Помощь"))
 
 # ===== STARTUP / SHUTDOWN HANDLERS =====
 
-logger.info(f"🔗 Raw DB URL: {os.getenv('DATABASE_URL')}") #логи для БД
-logger.info(f"🔗 Normalized DB URL: {settings.db_url}") # логи для БД
-
 async def on_startup(dispatcher):
     """
     Инициализация БД и создание таблиц при запуске бота.
