@@ -12,22 +12,45 @@ class Settings:
     openai_api_key: str
 
 def _normalize_db_url(url: str) -> str:
-    # иногда встречается postgres:// — приводим к postgresql://
+    """
+    Нормализует URL базы данных для работы с async SQLAlchemy.
+    
+    Почему это нужно:
+    - Railway часто даёт URL вида postgres://...
+    - Для async нужен postgresql+asyncpg://...
+    - Если SQLite — оставляем sqlite+aiosqlite://...
+    """
+    # Шаг 1: postgres:// → postgresql://
     if url.startswith("postgres://"):
         url = "postgresql" + url[len("postgres"):]
-    # для async движка нужен +asyncpg
-    if url.startswith("postgresql://"):
-        url = "postgresql+asyncpg://" + url[len("postgresql://"):]
-    return url    
+    
+    # Шаг 2: postgresql:// → postgresql+asyncpg://
+    if url.startswith("postgresql://") and "+asyncpg" not in url:
+        url = url.replace("postgresql://", "postgresql+asyncpg://")
+    
+    return url
 
 def get_settings() -> Settings:
+    """
+    Загружает настройки из переменных окружения.
+    
+    Приоритеты для DB_URL:
+    1. DB_URL (если задан)
+    2. DATABASE_URL (для Railway)
+    3. sqlite+aiosqlite:///./notes.db (дефолт для локальной разработки)
+    """
     token = os.getenv("BOT_TOKEN", "").strip()
-    db_url = os.getenv("DB_URL") or os.getenv("DATABASE_URL") or "sqlite+aiosqlite:///./notes.db"
+    
+    # Получаем raw URL из переменных окружения
+    raw_db_url = os.getenv("DB_URL") or os.getenv("DATABASE_URL") or "sqlite+aiosqlite:///./notes.db"
+    
+    # Нормализуем URL (добавляем asyncpg и т.д.)
     db_url = _normalize_db_url(raw_db_url)
-#    db_url = os.getenv("DB_URL", "sqlite+aiosqlite:///./notes.db").strip()
+    
     env = os.getenv("ENV", "dev").strip()
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
 
+    # Валидация обязательных параметров
     if not token:
         raise RuntimeError("Отсутствует BOT_TOKEN в .env")
     
