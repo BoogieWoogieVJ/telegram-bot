@@ -13,17 +13,12 @@ logger = logging.getLogger(__name__)
 
 client: Optional[AsyncOpenAI] = None
 
-def init_openai() -> None:
+def init_openai(api_key: str) -> None:
+    """
+    Инициализирует OpenAI API ключ.
+    Вызывается один раз при запуске бота.
+    """
     global client
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY не задан")
-# def init_openai(api_key: str) -> None:
-#     """
-#    Инициализирует OpenAI API ключ.
-#    Вызывается один раз при запуске бота.
-#    """
-#    global client
     client = AsyncOpenAI(api_key=api_key)
     logger.info("✅ OpenAI API инициализирован")
 
