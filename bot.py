@@ -237,6 +237,8 @@ async def handle_note(message: types.Message):
                 f"<b>Категория:</b> {category}\n"
                 f"<b>Описание:</b> {description}\n\n"
             )
+
+            LAST_REPLY.pop(message.chat.id, None)
             
         else:
             await message.reply("⚠️ Ошибка: БД недоступна")
