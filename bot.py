@@ -195,6 +195,8 @@ async def handle_note(message: types.Message):
         )
         return
     
+        await delete_last_reply(message.chat.id)
+    
     try:
         if notes_repo and users_repo:
             # Убеждаемся, что пользователь в БД
