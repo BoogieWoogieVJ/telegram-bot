@@ -198,6 +198,8 @@ async def handle_note(message: types.Message):
         await delete_last_reply(message.chat.id)
     
     try:
+        LAST_REPLY.pop(message.chat.id, None)
+        
         if notes_repo and users_repo:
             # Убеждаемся, что пользователь в БД
             await users_repo.ensure(message.from_user.id, message.from_user.username)
@@ -237,8 +239,6 @@ async def handle_note(message: types.Message):
                 f"<b>Категория:</b> {category}\n"
                 f"<b>Описание:</b> {description}\n\n"
             )
-
-            LAST_REPLY.pop(message.chat.id, None)
             
         else:
             await message.reply("⚠️ Ошибка: БД недоступна")
