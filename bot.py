@@ -201,7 +201,7 @@ async def handle_note(message: types.Message):
             await users_repo.ensure(message.from_user.id, message.from_user.username)
             
             # ← НОВОЕ: Показываем статус анализа
-            status_msg = await message.reply("⏳ Анализирую заметку ИИ...")
+            status_msg = await message.reply("⏳ Анализ...")
             
             # ← НОВОЕ: Получаем существующие категории пользователя
             existing_categories = await notes_repo.get_all_categories(message.from_user.id)
@@ -234,7 +234,6 @@ async def handle_note(message: types.Message):
                 f"<b>Текст:</b> {text}\n"
                 f"<b>Категория:</b> {category}\n"
                 f"<b>Описание:</b> {description}\n\n"
-                f"<code>ID: #{note.id}</code>"
             )
             
         else:

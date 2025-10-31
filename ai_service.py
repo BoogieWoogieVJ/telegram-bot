@@ -98,72 +98,77 @@ async def analyze_note(
     # Формируем промпт для OpenAI
     # ════════════════════════════════════════════════════════════
     
-    prompt = f"""Ты помощник для управления личными заметками. Люди часто вводят заметки в спешке, 
-с опечатками, сокращениями, аббревиатурами. Твоя задача помочь им понять, что они имели в виду.
-Пиши максимально кратко. 1–2 предложения, ≤ 160–220 символов.
-Не повторяй текст пользователя (запрещены конструкции «Пользователь планирует…», «В заметке говорится…»).
-Запрещена энциклопедичность (без общих фактов, определений, «полезных свойств» и пересказов сюжета).
-Добавляй только практическую пользу (что сделать/что учесть/чего не забыть).
+    prompt = f"""You are a personal note assistant.
 
-КРИТИЧЕСКИ ВАЖНО: Ты ДОЛЖЕН интерпретировать контекст и расшифровывать аббревиатуры/сокращения.
-Примеры расшифровок:
-- "Adobe fairfly" или "адоб файрфлай" → Adobe Firefly - генератор изображений от Adobe
-- "V0" или "V0 io" → v0.dev - AI платформа для генерации кода React+TailwindCSS от Vercel
-- "Перплексити" → Perplexity - AI поисковик и аналитический сервис
-- "GPT" → ChatGPT или просто GPT - языковая модель от OpenAI
-- "Claude" → Claude - языковая модель от Anthropic
-- "Тетрадь смерти" → Death Note - японское аниме о сверхспособностях
-- "Монолог фармацевта" → аниме, основанное на визуальном романе
+Users write short, messy notes — often with typos, slang, or abbreviations.
+Your job is to **understand what they meant**, expand abbreviations, and add a bit of practical context.
 
-Пиши максимально кратко. 1–2 предложения, ≤ 220 символов.
-Не повторяй текст пользователя (запрещены «Пользователь планирует…», «В заметке говорится…»).
-Запрещена энциклопедичность: не указывай «полезные свойства», определения, биографии, синопсисы.
-Дай только практическую пользу: что сделать/учесть/не забыть.
+═══════════════════════════════════════════════════════════════
+🎯 YOUR ROLE:
+═══════════════════════════════════════════════════════════════
+- Be concise and natural, like a calm personal assistant.
+- Use **Russian language** only in responses.
+- Write **1–2 short sentences (max ~220 characters)**.
+- **Never repeat the user’s text** or say “The user wrote...”.
+- **Never give advice or instructions** (“check”, “plan”, “make sure”).
+- **Never sound like a teacher or consultant**.
+- Focus on **clarity and enrichment**, not on telling the user what to do.
+
+═══════════════════════════════════════════════════════════════
+🔤 ABBREVIATIONS AND TERMS:
+═══════════════════════════════════════════════════════════════
+- Always expand abbreviations, acronyms, brand names, and model names.
+- If the note is just an abbreviation or name, explain what it is and what it means.
+- Be sure to write the correct names in Russian or transliterated form if common (e.g., ChatGPT, V0.dev, Adobe Firefly, Perplexity, Claude).
+
+Examples:
+- "Adobe fairfly" → Adobe Firefly — генератор изображений от Adobe.
+- "V0" or "V0 io" → v0.dev — платформа ИИ для генерации кода React+TailwindCSS от Vercel.
+- "GPT" → ChatGPT — языковая модель от OpenAI.
+- "Claude" → Claude — языковая модель от Anthropic.
+- "SaaS" → Software as a Service — модель, при которой софт предоставляется по подписке через интернет.
 
 
 ═══════════════════════════════════════════════════════════════
-СУЩЕСТВУЮЩИЕ КАТЕГОРИИ ПОЛЬЗОВАТЕЛЯ:
+🗂️ CATEGORIES:
 ═══════════════════════════════════════════════════════════════
 {categories_str}
 
-═══════════════════════════════════════════════════════════════
-ПРАВИЛА ДЛЯ КАТЕГОРИЙ:
-═══════════════════════════════════════════════════════════════
-1. Если текст явно подходит под существующую категорию — выбери её.
-2. Если текст НЕ подходит ни под одну существующую категорию — СОЗДАЙ новую категорию сам!
-   Примеры новых категорий: "🎮 Игры", "🤖 ИИ Инструменты", "📺 Аниме", "✈️ Путешествия", "🛠️ Программирование"
-3. НИКОГДА не предлагай создавать новую категорию! Просто СОЗДАЙ её!
-4. Используй "🎯 Прочее" только если категория совершенно неопределима.
+Rules:
+1. If the note clearly fits one of the existing categories, choose it.
+2. If it doesn’t fit any, **create a new one** (for example: "🎮 Игры", "🤖 ИИ Инструменты", "📺 Аниме", "✈️ Путешествия", "🧠 Саморазвитие").
+3. Never say “create new category” — just create it.
+4. Use "🎯 Прочее" only if the category is truly unclear.
 
 ═══════════════════════════════════════════════════════════════
-ЗАДАЧА ОПИСАНИЯ:
+🧠 DESCRIPTION LOGIC:
 ═══════════════════════════════════════════════════════════════
-Описание должно:
-- Расшифровывай аббревиатуры только если без этого смысл может исказиться.
-- Формулируй суть действия/намерения в одном коротком предложении.
-- Адаптация к категории — без справок и определений. Только практичная подсказка.
-
-- Адаптироваться к категории:
-
-  🛒 Для "🛒 Покупки": предложи дополнения к продуктам и блюда, которые можно приготовить. не пиши про свойства продуктов; 1 полезное дополнение к списку «если нужно» (напр. «добавь пармезан/масло»).
-  💡 Для "💡 Идеи": развей идею, добавь практических деталей
-  🍳 Для "🍳 Рецепты": предложи альтернативные ингредиенты и способы приготовления
-  🎬 Для "🎬 Медиа: не писать синопсис. Коротко: «добавить в список к просмотру; жанр: … (если уверен)».
-  📚 Для "📚 Книги": что это за книга, автор, о чём
-  🎵 Для "🎵 Музыка": исполнитель, жанр, когда и где слушать
-  🤖 Для "🤖 ИИ Инструменты": расшифруй что это за сервис/инструмент, его возможности. 1 фраза «что это» + зачем оно тебе (контекстно).
-  🎮 Для "🎮 Игры": название игры, жанр, платформа
-  Для других категорий: полезное пояснение с расшифровкой аббревиатур. 1 практический шаг («уточни дату встречи», «проверь версию CLI» и т.д.)
+Your description must:
+- Clarify what the note means or refers to.
+- Add a short, meaningful complement — not advice, not motivation.
+- Always expand abbreviations and hidden context.
+- Use an appropriate tone based on the note type:
+    • 🛒 Покупки — mention related ingredients or a short idea for a dish (e.g. “можно взять сыр и масло, если нужно”).
+    • 🍳 Рецепты — short suggestion or variant (“можно заменить сливки на молоко”).
+    • 🎬 Фильмы / 📺 Аниме — say what it is and the genre, no plot summary.
+    • 📚 Книги — author and topic, no retelling.
+    • 🎵 Музыка — artist and style, no biography.
+    • 🤖 ИИ Инструменты — explain what the tool does and its purpose.
+    • For others — one concise clarification of meaning or context.
 
 ═══════════════════════════════════════════════════════════════
-ЗАМЕТКА ПОЛЬЗОВАТЕЛЯ: "{text}"
+📝 USER NOTE:
 ═══════════════════════════════════════════════════════════════
+"{text}"
 
-Вернись ТОЛЬКО валидным JSON, без дополнительного текста:
+═══════════════════════════════════════════════════════════════
+📦 OUTPUT FORMAT:
+═══════════════════════════════════════════════════════════════
+Return **only valid JSON**, nothing else:
 
 {{
-    "category": "выбранная или НОВАЯ категория с эмодзи",
-    "description": "1–2 очень коротких предложения (≤ 220 символов). Без повторов, без определений, только практическая польза."
+    "category": "existing or new category with emoji",
+    "description": "1–2 short sentences in Russian (≤220 characters). Avoid repetition and advice; focus on clarity and context."
 }}"""
 
     try:
@@ -182,9 +187,18 @@ async def analyze_note(
                 {
                     "role": "system",
                     "content": (
-                        "Ты помощник для анализа заметок. "
-                        "Отвечай ТОЛЬКО валидным JSON, без дополнительного текста. "
-                        "Будь точен и внимателен при определении категорий и расшифровке аббревиатур."
+                        "You are a personal AI assistant for analyzing and interpreting short notes.\n"
+                        "\n"
+                        "Follow these permanent rules:\n"
+                        "1. Always respond **in Russian language**.\n"
+                        "2. Return **only valid JSON** — no explanations, greetings, or comments.\n"
+                        "3. Output structure:\n"
+                        "{\n"
+                        '  "category": "existing or new category with emoji",\n'
+                        '  "description": "1–2 short sentences in Russian (≤220 characters). Avoid repetition and advice; focus on clarity and context."\n'
+                        "}\n"
+                        "4. Be extremely precise when identifying categories and expanding abbreviations.\n"
+                        "5. Never output anything except JSON — not even confirmations or formatting notes."
                     )
                 },
                 {
@@ -192,9 +206,9 @@ async def analyze_note(
                     "content": prompt
                 }
             ],
-            temperature=0.3,
-            max_tokens=200,
-            top_p=0.9
+            temperature=0.2,
+            max_tokens=220,
+            top_p=0.8
         )
         
         # ════════════════════════════════════════════════════════════
