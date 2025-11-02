@@ -118,25 +118,6 @@ async def on_start(message: types.Message):
         reply_markup=MAIN_KB
     )
 
-
-@dp.message_handler(lambda m: (m.text or "").lower() in {"📦 архив", "архив"})
-async def show_archive(message: types.Message):
-    await delete_last_reply(message.chat.id)
-    
-    # Получаем заметки пользователя из БД
-    if notes_repo:
-        user_notes = await notes_repo.list_latest(message.from_user.id, limit=10)
-        if user_notes:
-            notes_text = "\n".join([f"• {note.text}" for note in user_notes])
-            sent = await message.answer(f"📦 Ваши заметки:\n\n{notes_text}")
-        else:
-            sent = await message.answer("📦 Здесь будут храниться заметки, а пока тут пусто")
-    else:
-        sent = await message.answer("⚠️ Ошибка: БД недоступна")
-    
-    LAST_REPLY[message.chat.id] = sent.message_id
-
-
 @dp.message_handler(lambda m: (m.text or "").lower() in {"❓ помощь", "помощь"})
 async def show_help(message: types.Message):
     await delete_last_reply(message.chat.id)
@@ -152,7 +133,7 @@ async def show_help(message: types.Message):
 
 
 # ← НОВОЕ: Хендлер для просмотра категорий
-@dp.message_handler(lambda m: (m.text or "").lower() in {"📂 архив", "архив"})
+@dp.message_handler(lambda m: (m.text or "").lower() in {"🗂️ архив", "архив"})
 async def show_categories(message: types.Message):
     """
     Показывает список категорий с inline-кнопками.
@@ -201,32 +182,6 @@ async def show_categories(message: types.Message):
     except Exception as e:
         logger.error(f"❌ Ошибка при получении категорий: {e}", exc_info=True)
         await message.answer("❌ Ошибка. Попробуй ещё раз.")
-
-   # Разобраться, если нужен блок ниже в данном исполнении
-
-    await delete_last_reply(message.chat.id)
-    
-    if not notes_repo:
-        await message.reply("⚠️ Ошибка: БД недоступна")
-        return
-    
-    try:
-        categories = await notes_repo.get_all_categories(message.from_user.id)
-        
-        if not categories:
-            sent = await message.reply("📂 У тебя пока нет заметок")
-        else:
-            text = "📂 Твои категории:\n\n"
-            for category, count in categories:
-                text += f"{category} (<b>{count}</b>)\n"
-            
-            sent = await message.reply(text)
-        
-        LAST_REPLY[message.chat.id] = sent.message_id
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка при получении категорий: {e}", exc_info=True)
-        await message.reply("❌ Ошибка. Попробуй ещё раз.")
 
 @dp.callback_query_handler(lambda c: c.data.startswith("cat_"))
 async def handle_category_selection(callback: CallbackQuery):
