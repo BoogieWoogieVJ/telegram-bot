@@ -4,12 +4,13 @@ from typing import Dict, Optional
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
-from aiogram.types import (ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,)
+from aiogram.types import (ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery)
 
 from config import get_settings
 from logging_conf import setup_logging
 from db.base import init_db, Base
 from db.repositories import UsersRepo, NotesRepo
+from db.models import Note  # ← нужно для handle_note_selection
 from middlewares.traffic import TrafficLogMiddleware
 from middlewares.auto_delete import AutoDeleteCommandsMiddleware
 from ai_service import init_openai, analyze_note  # ← НОВОЕ
@@ -44,7 +45,7 @@ dp.middleware.setup(AutoDeleteCommandsMiddleware())
 
 # меню
 MAIN_KB = ReplyKeyboardMarkup(resize_keyboard=True)
-MAIN_KB.add(KeyboardButton("📦 Архив"), KeyboardButton("🗂️ Категории"))
+MAIN_KB.add(KeyboardButton("🗂️ Архив"))
 MAIN_KB.add(KeyboardButton("❓ Помощь"))
 
 
@@ -151,11 +152,58 @@ async def show_help(message: types.Message):
 
 
 # ← НОВОЕ: Хендлер для просмотра категорий
-@dp.message_handler(lambda m: (m.text or "").lower() in {"🗂️ категории", "категории"})
+@dp.message_handler(lambda m: (m.text or "").lower() in {"📂 архив", "архив"})
 async def show_categories(message: types.Message):
     """
-    Показывает все категории пользователя с количеством заметок.
+    Показывает список категорий с inline-кнопками.
+    Каждая кнопка ведёт к заметкам этой категории.
     """
+    await delete_last_reply(message.chat.id)
+    
+    if not notes_repo:
+        sent = await message.answer("⚠️ Ошибка: БД недоступна")
+        LAST_REPLY[message.chat.id] = sent.message_id
+        return
+    
+    try:
+        # Получаем все категории пользователя
+        categories = await notes_repo.get_all_categories(message.from_user.id)
+        
+        if not categories:
+            # Если заметок нет — показываем подсказку
+            sent = await message.answer(
+                "📂 У тебя пока нет заметок.\n\n"
+                "Просто напиши текст (3-60 символов), и я сохраню его!"
+            )
+            LAST_REPLY[message.chat.id] = sent.message_id
+            return
+        
+        # Создаём inline-клавиатуру
+        keyboard = InlineKeyboardMarkup(row_width=1)  # по 1 кнопке в ряд
+        
+        for category, count in categories:
+            # Добавляем кнопку для каждой категории
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=f"{category} ({count})",  # "🛒 Покупки (5)"
+                    callback_data=f"cat_{category}"  # "cat_🛒 Покупки"
+                )
+            )
+        
+        sent = await message.answer(
+            "📂 Твои категории:\n\n"
+            "Выбери категорию, чтобы посмотреть заметки",
+            reply_markup=keyboard  # ← кнопки прикрепляются к сообщению
+        )
+        
+        LAST_REPLY[message.chat.id] = sent.message_id
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка при получении категорий: {e}", exc_info=True)
+        await message.answer("❌ Ошибка. Попробуй ещё раз.")
+
+   # Разобраться, если нужен блок ниже в данном исполнении
+
     await delete_last_reply(message.chat.id)
     
     if not notes_repo:
@@ -180,6 +228,145 @@ async def show_categories(message: types.Message):
         logger.error(f"❌ Ошибка при получении категорий: {e}", exc_info=True)
         await message.reply("❌ Ошибка. Попробуй ещё раз.")
 
+@dp.callback_query_handler(lambda c: c.data.startswith("cat_"))
+async def handle_category_selection(callback: CallbackQuery):
+    """
+    Обрабатывает нажатие на кнопку категории.
+    Показывает список заметок выбранной категории.
+    """
+    # Извлекаем название категории из callback_data
+    # Пример: "cat_🛒 Покупки" → "🛒 Покупки"
+    category = callback.data[4:]  # убираем первые 4 символа ("cat_")
+    
+    if not notes_repo:
+        await callback.answer("⚠️ Ошибка: БД недоступна", show_alert=True)
+        return
+    
+    # Получаем заметки этой категории
+    notes = await notes_repo.list_by_category(
+        user_id=callback.from_user.id,
+        category=category,
+        limit=20  # можно больше, чем в старом "архиве"
+    )
+    
+    if not notes:
+        # Если в категории нет заметок (например, все удалены)
+        await callback.answer("📭 В этой категории пока нет заметок", show_alert=True)
+        return
+    
+    # Создаём клавиатуру с заметками
+    keyboard = InlineKeyboardMarkup(row_width=1)
+    
+    for note in notes:
+        # Обрезаем текст для кнопки (чтобы не было длинных кнопок)
+        button_text = note.text[:35] + "..." if len(note.text) > 35 else note.text
+        
+        keyboard.add(
+            InlineKeyboardButton(
+                text=button_text,  # "купить молоко и хлеб"
+                callback_data=f"note_{note.id}"  # "note_123"
+            )
+        )
+    
+    # Кнопка "Назад к категориям"
+    keyboard.add(
+        InlineKeyboardButton(
+            "⬅️ Назад к категориям", 
+            callback_data="back_to_categories"
+        )
+    )
+    
+    # Редактируем сообщение (вместо отправки нового)
+    await callback.message.edit_text(
+        f"📂 {category}\n\n"
+        f"Заметок: {len(notes)}\n"
+        "Выбери заметку для просмотра:",
+        reply_markup=keyboard
+    )
+    
+    # Убираем "часики" на кнопке
+    await callback.answer()
+
+@dp.callback_query_handler(lambda c: c.data.startswith("note_"))
+async def handle_note_selection(callback: CallbackQuery):
+    """
+    Показывает детали выбранной заметки.
+    """
+    # Извлекаем ID заметки из callback_data
+    # Пример: "note_123" → 123
+    note_id = int(callback.data.split("_")[1])
+    
+    if not notes_repo:
+        await callback.answer("⚠️ Ошибка: БД недоступна", show_alert=True)
+        return
+    
+    # Получаем заметку из БД
+    async with notes_repo.sm() as s:
+        note = await s.get(Note, note_id)
+        
+        # Проверка безопасности: заметка существует и принадлежит пользователю
+        if not note or note.user_id != callback.from_user.id:
+            await callback.answer("❌ Заметка не найдена", show_alert=True)
+            return
+    
+    # Формируем детали заметки
+    details = (
+        f"📝 <b>Заметка #{note.id}</b>\n\n"
+        f"<b>Текст:</b> {note.text}\n"
+        f"<b>Категория:</b> {note.category or '—'}\n"
+        f"<b>Описание:</b> {note.description or '—'}\n"
+        f"<b>Создана:</b> {note.created_at.strftime('%d.%m.%Y %H:%M')}\n"
+    )
+    
+    # Меню действий
+    action_menu = InlineKeyboardMarkup(row_width=2)
+    action_menu.add(
+        InlineKeyboardButton("✏️ Редактировать", callback_data=f"edit_{note.id}"),
+        InlineKeyboardButton("🗑 Удалить", callback_data=f"delete_{note.id}")
+    )
+    # Возвращаемся к КАТЕГОРИИ (а не к списку всех категорий)
+    action_menu.add(
+        InlineKeyboardButton("⬅️ Назад", callback_data=f"cat_{note.category}")
+    )
+    
+    await callback.message.edit_text(details, reply_markup=action_menu)
+    await callback.answer()
+
+@dp.callback_query_handler(lambda c: c.data == "back_to_categories")
+async def back_to_categories(callback: CallbackQuery):
+    """
+    Возвращает пользователя к списку категорий.
+    """
+    if not notes_repo:
+        await callback.answer("⚠️ Ошибка: БД недоступна", show_alert=True)
+        return
+    
+    # Получаем категории снова
+    categories = await notes_repo.get_all_categories(callback.from_user.id)
+    
+    if not categories:
+        await callback.message.edit_text("📂 У тебя пока нет заметок")
+        await callback.answer()
+        return
+    
+    # Создаём клавиатуру
+    keyboard = InlineKeyboardMarkup(row_width=1)
+    
+    for category, count in categories:
+        keyboard.add(
+            InlineKeyboardButton(
+                text=f"{category} ({count})",
+                callback_data=f"cat_{category}"
+            )
+        )
+    
+    await callback.message.edit_text(
+        "📂 Твои категории:\n\n"
+        "Выбери категорию, чтобы посмотреть заметки",
+        reply_markup=keyboard
+    )
+    
+    await callback.answer()
 
 @dp.message_handler(content_types=[types.ContentType.TEXT])
 async def handle_note(message: types.Message):
@@ -194,12 +381,10 @@ async def handle_note(message: types.Message):
             "❌ Заметка должна быть от 3 до 60 символов. Попробуй ещё раз!"
         )
         return
-    
-        await delete_last_reply(message.chat.id)
-    
+        
     try:
         LAST_REPLY.pop(message.chat.id, None)
-        
+
         if notes_repo and users_repo:
             # Убеждаемся, что пользователь в БД
             await users_repo.ensure(message.from_user.id, message.from_user.username)
