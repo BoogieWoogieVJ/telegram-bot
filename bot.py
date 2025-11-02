@@ -19,6 +19,7 @@ settings = get_settings()
 logger = setup_logging(settings.env)
 
 LAST_REPLY: Dict[int, int] = {}
+EDITING_STATE: Dict[int, int] = {}
 
 # Глобальные экземпляры репозиториев (инициализируются в on_startup)
 users_repo: Optional[UsersRepo] = None
@@ -323,12 +324,259 @@ async def back_to_categories(callback: CallbackQuery):
     
     await callback.answer()
 
+@dp.callback_query_handler(lambda c: c.data.startswith("delete_"))
+async def handle_delete_note(callback: CallbackQuery):
+    """
+    Удаляет заметку после подтверждения.
+    Показывает кнопки "Да, удалить" и "Отмена".
+    """
+    # Извлекаем ID заметки
+    note_id = int(callback.data.split("_")[1])
+    
+    if not notes_repo:
+        await callback.answer("⚠️ Ошибка: БД недоступна", show_alert=True)
+        return
+    
+    # Получаем заметку для проверки прав
+    async with notes_repo.sm() as s:
+        note = await s.get(Note, note_id)
+        
+        if not note or note.user_id != callback.from_user.id:
+            await callback.answer("❌ Заметка не найдена", show_alert=True)
+            return
+    
+    # Создаём меню подтверждения
+    confirm_menu = InlineKeyboardMarkup(row_width=2)
+    confirm_menu.add(
+        InlineKeyboardButton("✅ Да, удалить", callback_data=f"confirm_delete_{note_id}"),
+        InlineKeyboardButton("❌ Отмена", callback_data=f"cat_{note.category}")
+    )
+    
+    # Показываем предупреждение
+    await callback.message.edit_text(
+        f"🗑 <b>Удалить заметку?</b>\n\n"
+        f"<b>Текст:</b> {note.text}\n\n"
+        f"Это действие нельзя отменить.",
+        reply_markup=confirm_menu
+    )
+    
+    await callback.answer()
+
+@dp.callback_query_handler(lambda c: c.data.startswith("confirm_delete_"))
+async def handle_confirm_delete(callback: CallbackQuery):
+    """
+    Окончательно удаляет заметку и возвращает к категории.
+    """
+    # Извлекаем ID
+    note_id = int(callback.data.split("_")[2])  # "confirm_delete_123" → "123"
+    
+    if not notes_repo:
+        await callback.answer("⚠️ Ошибка: БД недоступна", show_alert=True)
+        return
+    
+    try:
+        # Получаем заметку (нужна категория для возврата)
+        async with notes_repo.sm() as s:
+            note = await s.get(Note, note_id)
+            
+            if not note or note.user_id != callback.from_user.id:
+                await callback.answer("❌ Заметка не найдена", show_alert=True)
+                return
+            
+            # Сохраняем категорию до удаления
+            category = note.category
+            
+            # Удаляем заметку
+            await s.delete(note)
+            await s.commit()
+        
+        logger.info(f"🗑 Заметка #{note_id} удалена пользователем {callback.from_user.id}")
+        
+        # Показываем уведомление
+        await callback.answer("✅ Заметка удалена", show_alert=True)
+        
+        # Возвращаемся к списку заметок категории
+        # (копируем логику из handle_category_selection)
+        notes = await notes_repo.list_by_category(
+            user_id=callback.from_user.id,
+            category=category,
+            limit=20
+        )
+        
+        if not notes:
+            # Если это была последняя заметка — возвращаемся к категориям
+            categories = await notes_repo.get_all_categories(callback.from_user.id)
+            
+            if not categories:
+                await callback.message.edit_text("📂 У тебя больше нет заметок")
+                return
+            
+            keyboard = InlineKeyboardMarkup(row_width=1)
+            for cat, count in categories:
+                keyboard.add(
+                    InlineKeyboardButton(
+                        text=f"{cat} ({count})",
+                        callback_data=f"cat_{cat}"
+                    )
+                )
+            
+            await callback.message.edit_text(
+                "📂 Твои категории:\n\n"
+                "Выбери категорию, чтобы посмотреть заметки",
+                reply_markup=keyboard
+            )
+            return
+        
+        # Показываем оставшиеся заметки категории
+        keyboard = InlineKeyboardMarkup(row_width=1)
+        
+        for n in notes:
+            button_text = n.text[:35] + "..." if len(n.text) > 35 else n.text
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=button_text,
+                    callback_data=f"note_{n.id}"
+                )
+            )
+        
+        keyboard.add(
+            InlineKeyboardButton("⬅️ Назад к категориям", callback_data="back_to_categories")
+        )
+        
+        await callback.message.edit_text(
+            f"📂 {category}\n\n"
+            f"Заметок: {len(notes)}\n"
+            "Выбери заметку для просмотра:",
+            reply_markup=keyboard
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка при удалении заметки: {e}", exc_info=True)
+        await callback.answer("❌ Ошибка при удалении", show_alert=True)
+
+@dp.callback_query_handler(lambda c: c.data.startswith("edit_"))
+async def handle_edit_note(callback: CallbackQuery):
+    """
+    Начинает процесс редактирования заметки.
+    Просит пользователя отправить новый текст.
+    """
+    # Извлекаем ID заметки
+    note_id = int(callback.data.split("_")[1])
+    
+    if not notes_repo:
+        await callback.answer("⚠️ Ошибка: БД недоступна", show_alert=True)
+        return
+    
+    # Получаем заметку
+    async with notes_repo.sm() as s:
+        note = await s.get(Note, note_id)
+        
+        if not note or note.user_id != callback.from_user.id:
+            await callback.answer("❌ Заметка не найдена", show_alert=True)
+            return
+    
+    # Создаём меню отмены
+    cancel_menu = InlineKeyboardMarkup()
+    cancel_menu.add(
+        InlineKeyboardButton("❌ Отмена", callback_data=f"note_{note_id}")
+    )
+    
+    # Просим ввести новый текст
+    await callback.message.edit_text(
+        f"✏️ <b>Редактирование заметки #{note_id}</b>\n\n"
+        f"<b>Текущий текст:</b> {note.text}\n\n"
+        f"Отправь новый текст заметки (3-60 символов):",
+        reply_markup=cancel_menu
+    )
+    
+    # Сохраняем состояние: пользователь редактирует заметку
+    # (используем глобальный словарь для хранения состояния)
+    EDITING_STATE[callback.from_user.id] = note_id
+    
+    await callback.answer()            
+
 @dp.message_handler(content_types=[types.ContentType.TEXT])
 async def handle_note(message: types.Message):
     """
-    Обработка текстовых сообщений — сохранение заметок в БД с ИИ-анализом.
+    Обработка текстовых сообщений:
+    - Если пользователь редактирует заметку → обновляем её
+    - Иначе → создаём новую заметку с ИИ-анализом
     """
     text = (message.text or "").strip()
+    
+    # ========================================
+    # Проверяем: это редактирование?
+    # ========================================
+    if message.from_user.id in EDITING_STATE:
+        note_id = EDITING_STATE.pop(message.from_user.id)
+        
+        # Проверяем длину нового текста
+        if len(text) < 3 or len(text) > 60:
+            # Возвращаем состояние редактирования
+            EDITING_STATE[message.from_user.id] = note_id
+            await message.reply("❌ Текст должен быть от 3 до 60 символов. Попробуй ещё раз!")
+            return
+        
+        # Обновляем заметку
+        try:
+            if not notes_repo:
+                await message.reply("⚠️ Ошибка: БД недоступна")
+                return
+            
+            async with notes_repo.sm() as s:
+                note = await s.get(Note, note_id)
+                
+                if not note or note.user_id != message.from_user.id:
+                    await message.reply("❌ Заметка не найдена")
+                    return
+                
+                # Показываем статус
+                status_msg = await message.reply("⏳ Анализ нового текста...")
+                
+                # Получаем категории для ИИ
+                existing_categories = await notes_repo.get_all_categories(message.from_user.id)
+                user_categories = [cat for cat, _ in existing_categories] if existing_categories else []
+                user_categories = [cat for cat in user_categories if cat is not None]
+                
+                # Анализируем новый текст
+                ai_result = await analyze_note(text, user_categories)
+                new_category = ai_result.get("category", "🎯 Прочее")
+                new_description = ai_result.get("description", "")
+                
+                # Обновляем поля
+                old_text = note.text
+                note.text = text
+                note.category = new_category
+                note.description = new_description
+                
+                await s.commit()
+                
+                # Удаляем статус
+                with suppress(Exception):
+                    await bot.delete_message(message.chat.id, status_msg.message_id)
+                
+                logger.info(f"✏️ Заметка #{note_id} обновлена: '{old_text}' → '{text}'")
+                
+                # Показываем результат с кнопкой возврата
+                result_menu = InlineKeyboardMarkup()
+                result_menu.add(
+                    InlineKeyboardButton("📝 Открыть заметку", callback_data=f"note_{note_id}")
+                )
+                
+                await message.reply(
+                    f"✅ Заметка обновлена!\n\n"
+                    f"<b>Новый текст:</b> {text}\n"
+                    f"<b>Категория:</b> {new_category}\n"
+                    f"<b>Описание:</b> {new_description}",
+                    reply_markup=result_menu
+                )
+                
+                return  # ← ВАЖНО! Выходим, чтобы не создавать новую заметку
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка при редактировании заметки: {e}", exc_info=True)
+            await message.reply("❌ Ошибка при сохранении. Попробуй ещё раз.")
+            return
     
     # Проверяем длину заметки (3-60 символов)
     if len(text) < 3 or len(text) > 60:
